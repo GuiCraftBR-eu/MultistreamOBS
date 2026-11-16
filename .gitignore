@@ -1,0 +1,10 @@
+# Modified for Multistream OBS on 2026-11-16.
+.deps/
+build_*/
+dist/
+release/
+.vs/
+*.user
+*.lock.json
+cmake/.CMakeBuildNumber
+.DS_Store

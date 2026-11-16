@@ -1,0 +1,53 @@
+name: Windows build and release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        shell: pwsh
+        run: cmake --preset windows-x64 -DMULTISTREAM_BUILD_TESTS=ON
+      - name: Build
+        shell: pwsh
+        run: cmake --build --preset windows-x64 --parallel 4
+      - name: Test
+        shell: pwsh
+        run: |
+          $env:PATH = "$PWD\.deps\obs-deps-qt6-2026-10-23-x64\bin;$env:PATH"
+          ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = (Get-Content buildspec.json -Raw | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version' }
+          cmake --install build_x64 --config RelWithDebInfo --prefix "$PWD\dist\stage"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item README.md, LICENSE 'dist\stage\multistream-obs'
+          Remove-Item 'dist\stage\multistream-obs\multistream-obs.pdb' -Force -ErrorAction SilentlyContinue
+          python tools/package_update.py 'dist\stage\multistream-obs' $version 'dist\multistream-obs-update-win64.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path 'dist\stage\multistream-obs' -DestinationPath "dist\MultistreamOBS-$version-Windows-x64.zip"
+          Get-FileHash 'dist\multistream-obs-update-win64.json', "dist\MultistreamOBS-$version-Windows-x64.zip" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content 'dist\SHA256SUMS.txt' -Encoding utf8
+      - name: Publish release if this version does not exist
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content buildspec.json -Raw | ConvertFrom-Json).version
+          gh release view "v$version" --repo '${{ github.repository }}' 2>$null
+          if ($LASTEXITCODE -eq 0) { Write-Host "Release v$version already exists; leaving it unchanged."; exit 0 }
+          gh release create "v$version" --repo '${{ github.repository }}' --target '${{ github.sha }}' `
+            --title "Multistream OBS v$version" --notes-file RELEASE_NOTES.md `
+            "dist\MultistreamOBS-$version-Windows-x64.zip" 'dist\multistream-obs-update-win64.json' 'dist\SHA256SUMS.txt'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -64,6 +64,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub com.obsproject.Studio
           flatpak install --user -y ./MultistreamOBS-flatpak-x86_64.flatpak
           flatpak run --command=sh com.obsproject.Studio -c '
@@ -114,3 +115,4 @@ jobs:
             --title "Multistream OBS v$version" --notes-file RELEASE_NOTES.md \
             dist/MultistreamOBS-*-Windows-x64.zip dist/multistream-obs-update-win64.json \
             dist/MultistreamOBS-flatpak-x86_64.flatpak dist/SHA256SUMS.txt
+

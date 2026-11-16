@@ -1,4 +1,5 @@
 #include "account-connect.h"
+#include "platform-helpers.h"
 #include <obs-module.h>
 
 #include <QCryptographicHash>
@@ -6,9 +7,13 @@
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
+#include <QFile>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QHostAddress>
 #include <QInputDialog>
+#include <QMap>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -20,6 +25,7 @@
 #include <QPushButton>
 #include <QRandomGenerator>
 #include <QSharedPointer>
+#include <QSet>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -46,7 +52,10 @@ class AccountDialog final : public QDialog {
     QLabel *status_;
     QLineEdit *code_;
     QPushButton *open_;
-    QString platform_, deviceCode_, verificationUrl_, state_, verifier_, clientId_, clientSecret_;
+    QString platform_, deviceCode_, verificationUrl_, state_, verifier_, clientId_, clientSecret_, redirect_;
+    QVector<YouTubeStreamSettings> youtubeStreams_;
+    QSet<QString> youtubeKnownIds_;
+    QMap<QString, QString> youtubeBroadcasts_;
     qint64 deadline_ = 0;
     int interval_ = 5;
     bool callbackUsed_ = false;
@@ -180,11 +189,52 @@ class AccountDialog final : public QDialog {
         status_->setText(obs_module_text("Account.KickInstructions"));
         open_->setEnabled(true);
         timer_.start(180000);
-        connect(&callback_, &QTcpServer::newConnection, this, [this] { receiveKick(); });
+        connect(&callback_, &QTcpServer::newConnection, this, [this] { receiveCallback(); });
         QDesktopServices::openUrl(url);
     }
 
-    void receiveKick() {
+    void beginYouTube() {
+        // Offer the client file already chosen in YT-Chatterino, when available.
+        // The user still selects the file; neither that file nor OAuth tokens are saved here.
+        QString suggested;
+        QFile settings(QDir::home().filePath(".ytchatterino.json"));
+        if (settings.open(QIODevice::ReadOnly) && settings.size() <= 1024 * 1024)
+            suggested = QJsonDocument::fromJson(settings.readAll()).object()
+                            .value("features").toObject().value("google_client_file").toString();
+        const auto path = QFileDialog::getOpenFileName(this, obs_module_text("Account.GoogleClientFile"),
+                                                        suggested, QStringLiteral("JSON (*.json)"));
+        if (path.isEmpty()) { reject(); return; }
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly) || file.size() > 1024 * 1024) {
+            fail(obs_module_text("Account.GoogleClientError")); return;
+        }
+        const auto client = QJsonDocument::fromJson(file.readAll()).object().value("installed").toObject();
+        clientId_ = client.value("client_id").toString().trimmed();
+        clientSecret_ = client.value("client_secret").toString();
+        if (!clientId_.endsWith(".apps.googleusercontent.com")) {
+            fail(obs_module_text("Account.GoogleClientError")); return;
+        }
+        if (!callback_.listen(QHostAddress::LocalHost, 0)) { fail(obs_module_text("Account.GoogleCallbackError")); return; }
+        redirect_ = QStringLiteral("http://127.0.0.1:%1/").arg(callback_.serverPort());
+        verifier_ = urlSafe(randomBytes(64));
+        state_ = urlSafe(randomBytes(32));
+        const auto challenge = urlSafe(QCryptographicHash::hash(verifier_.toUtf8(), QCryptographicHash::Sha256));
+        QUrl url("https://accounts.google.com/o/oauth2/v2/auth");
+        QUrlQuery query;
+        query.addQueryItem("client_id", clientId_); query.addQueryItem("redirect_uri", redirect_);
+        query.addQueryItem("response_type", "code");
+        query.addQueryItem("scope", "https://www.googleapis.com/auth/youtube.readonly");
+        query.addQueryItem("state", state_); query.addQueryItem("code_challenge", challenge);
+        query.addQueryItem("code_challenge_method", "S256"); url.setQuery(query);
+        verificationUrl_ = url.toString();
+        status_->setText(obs_module_text("Account.GoogleInstructions"));
+        open_->setEnabled(true);
+        timer_.start(180000);
+        connect(&callback_, &QTcpServer::newConnection, this, [this] { receiveCallback(); });
+        QDesktopServices::openUrl(url);
+    }
+
+    void receiveCallback() {
         while (callback_.hasPendingConnections()) {
             auto socket = callback_.nextPendingConnection();
             auto buffer = QSharedPointer<QByteArray>::create();
@@ -197,8 +247,9 @@ class AccountDialog final : public QDialog {
                 const QUrlQuery query(target);
                 const auto code = query.queryItemValue("code");
                 const auto err = query.queryItemValue("error");
+                const auto expectedPath = platform_ == "youtube" ? QStringLiteral("/") : QStringLiteral("/callback");
                 const bool valid = !callbackUsed_ && socket->peerAddress().isLoopback() && first.value(0) == "GET" &&
-                    target.path() == "/callback" && !state_.isEmpty() && query.queryItemValue("state") == state_ &&
+                    target.path() == expectedPath && !state_.isEmpty() && query.queryItemValue("state") == state_ &&
                     (!code.isEmpty() || !err.isEmpty());
                 const QByteArray body = valid ? "Return to OBS to finish sign-in." : "Invalid sign-in callback.";
                 socket->write(QByteArray(valid ? "HTTP/1.1 200 OK\r\n" : "HTTP/1.1 400 Bad Request\r\n") +
@@ -210,15 +261,18 @@ class AccountDialog final : public QDialog {
                 if (!err.isEmpty()) { fail(obs_module_text("Account.Denied")); return; }
                 QUrlQuery form;
                 form.addQueryItem("grant_type", "authorization_code"); form.addQueryItem("client_id", clientId_);
-                form.addQueryItem("client_secret", clientSecret_); form.addQueryItem("redirect_uri", kickRedirect);
+                if (!clientSecret_.isEmpty()) form.addQueryItem("client_secret", clientSecret_);
+                form.addQueryItem("redirect_uri", platform_ == "youtube" ? redirect_ : QString::fromLatin1(kickRedirect));
                 form.addQueryItem("code_verifier", verifier_); form.addQueryItem("code", code);
                 clientSecret_.clear(); verifier_.clear(); state_.clear();
-                request(QUrl("https://id.kick.com/oauth/token"), "POST", form, {},
+                const QUrl tokenUrl(platform_ == "youtube" ? "https://oauth2.googleapis.com/token" : "https://id.kick.com/oauth/token");
+                request(tokenUrl, "POST", form, {},
                         [this](QJsonObject json, int http, QNetworkReply::NetworkError e) {
                     const auto token = json.value("access_token").toString();
                     if (e != QNetworkReply::NoError || http != 200 || token.isEmpty()) {
                         fail(obs_module_text("Account.SignInError")); return;
                     }
+                    if (platform_ == "youtube") { fetchYouTubeStreams(token, {}, 0); return; }
                     request(QUrl("https://api.kick.com/public/v1/channels"), "GET", {},
                             {{"Authorization", "Bearer " + token.toUtf8()}},
                             [this](QJsonObject response, int status, QNetworkReply::NetworkError error) {
@@ -242,6 +296,119 @@ class AccountDialog final : public QDialog {
             });
             connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
         }
+    }
+
+    void fetchYouTubeStreams(const QString &token, const QString &page, int pageCount) {
+        QUrl url("https://www.googleapis.com/youtube/v3/liveStreams");
+        QUrlQuery query;
+        query.addQueryItem("part", "snippet,cdn");
+        query.addQueryItem("mine", "true");
+        query.addQueryItem("maxResults", "50");
+        query.addQueryItem("fields", "nextPageToken,items(id,snippet(title,isDefaultStream),cdn(ingestionType,ingestionInfo(streamName,rtmpsIngestionAddress)))");
+        if (!page.isEmpty()) query.addQueryItem("pageToken", page);
+        url.setQuery(query);
+        request(url, "GET", {}, {{"Authorization", "Bearer " + token.toUtf8()}},
+                [this, token, pageCount](QJsonObject response, int status, QNetworkReply::NetworkError error) {
+            if (error != QNetworkReply::NoError || status != 200) {
+                fail(obs_module_text("Account.GoogleStreamsError")); return;
+            }
+            for (const auto &item : response.value("items").toArray()) {
+                YouTubeStreamSettings stream;
+                if (YouTubeStreamFromApi(item.toObject(), &stream) && !stream.id.isEmpty()) {
+                    youtubeKnownIds_.insert(stream.id);
+                    youtubeStreams_.append(stream);
+                }
+            }
+            const auto next = response.value("nextPageToken").toString();
+            if (!next.isEmpty() && pageCount < 19) { fetchYouTubeStreams(token, next, pageCount + 1); return; }
+            // YouTube omits non-reusable streams from liveStreams.list(mine=true).
+            // Look up bound streams of upcoming and active broadcasts separately.
+            fetchYouTubeBroadcasts(token, "upcoming", {}, 0);
+        });
+    }
+
+    void fetchYouTubeBroadcasts(const QString &token, const QString &phase, const QString &page, int pageCount) {
+        QUrl url("https://www.googleapis.com/youtube/v3/liveBroadcasts");
+        QUrlQuery query;
+        query.addQueryItem("part", "snippet,contentDetails");
+        query.addQueryItem("broadcastStatus", phase);
+        query.addQueryItem("broadcastType", "all");
+        query.addQueryItem("maxResults", "50");
+        query.addQueryItem("fields", "nextPageToken,items(snippet(title),contentDetails(boundStreamId))");
+        if (!page.isEmpty()) query.addQueryItem("pageToken", page);
+        url.setQuery(query);
+        request(url, "GET", {}, {{"Authorization", "Bearer " + token.toUtf8()}},
+                [this, token, phase, pageCount](QJsonObject response, int status, QNetworkReply::NetworkError error) {
+            if (error != QNetworkReply::NoError || status != 200) {
+                if (youtubeStreams_.isEmpty()) fail(obs_module_text("Account.GoogleStreamsError"));
+                else chooseYouTubeStream();
+                return;
+            }
+            for (const auto &item : response.value("items").toArray()) {
+                const auto object = item.toObject();
+                const auto id = object.value("contentDetails").toObject().value("boundStreamId").toString();
+                if (!id.isEmpty() && !youtubeKnownIds_.contains(id))
+                    youtubeBroadcasts_.insert(id, object.value("snippet").toObject().value("title").toString());
+            }
+            const auto next = response.value("nextPageToken").toString();
+            if (!next.isEmpty() && pageCount < 19) { fetchYouTubeBroadcasts(token, phase, next, pageCount + 1); return; }
+            if (phase == "upcoming") { fetchYouTubeBroadcasts(token, "active", {}, 0); return; }
+            fetchYouTubeBoundStreams(token, youtubeBroadcasts_.keys(), 0);
+        });
+    }
+
+    void fetchYouTubeBoundStreams(const QString &token, const QStringList &ids, int offset) {
+        if (offset >= ids.size()) { chooseYouTubeStream(); return; }
+        QUrl url("https://www.googleapis.com/youtube/v3/liveStreams");
+        QUrlQuery query;
+        query.addQueryItem("part", "snippet,cdn");
+        query.addQueryItem("id", ids.mid(offset, 50).join(','));
+        query.addQueryItem("maxResults", "50");
+        query.addQueryItem("fields", "items(id,snippet(title,isDefaultStream),cdn(ingestionType,ingestionInfo(streamName,rtmpsIngestionAddress)))");
+        url.setQuery(query);
+        request(url, "GET", {}, {{"Authorization", "Bearer " + token.toUtf8()}},
+                [this, token, ids, offset](QJsonObject response, int status, QNetworkReply::NetworkError error) {
+            if (error != QNetworkReply::NoError || status != 200) {
+                if (youtubeStreams_.isEmpty()) fail(obs_module_text("Account.GoogleStreamsError"));
+                else chooseYouTubeStream();
+                return;
+            }
+            for (const auto &item : response.value("items").toArray()) {
+                YouTubeStreamSettings stream;
+                if (!YouTubeStreamFromApi(item.toObject(), &stream) || !youtubeBroadcasts_.contains(stream.id) ||
+                    youtubeKnownIds_.contains(stream.id)) continue;
+                const auto title = youtubeBroadcasts_.value(stream.id).trimmed();
+                if (!title.isEmpty()) stream.title = title;
+                youtubeKnownIds_.insert(stream.id);
+                youtubeStreams_.append(stream);
+            }
+            fetchYouTubeBoundStreams(token, ids, offset + 50);
+        });
+    }
+
+    void chooseYouTubeStream() {
+        if (youtubeStreams_.isEmpty()) { fail(obs_module_text("Account.GoogleNoStreams")); return; }
+        int selected = 0;
+        if (youtubeStreams_.size() > 1) {
+            QStringList names;
+            int defaultIndex = 0;
+            for (int i = 0; i < youtubeStreams_.size(); ++i) {
+                const auto &stream = youtubeStreams_.at(i);
+                names.append(QString::number(i + 1) + ". " + stream.title +
+                             (stream.isDefault ? QStringLiteral(" (") + obs_module_text("YouTube.DefaultStream") + ")" : QString()));
+                if (stream.isDefault) defaultIndex = i;
+            }
+            bool ok = false;
+            const auto chosen = QInputDialog::getItem(this, obs_module_text("YouTube.SelectStream"),
+                                                      obs_module_text("YouTube.SelectStreamHint"), names,
+                                                      defaultIndex, false, &ok);
+            if (!ok) { reject(); return; }
+            selected = names.indexOf(chosen);
+            if (selected < 0) { fail(obs_module_text("Account.GoogleStreamsError")); return; }
+        }
+        const auto stream = youtubeStreams_.at(selected);
+        youtubeStreams_.clear();
+        finish(stream.server, stream.key, stream.title);
     }
 
     void finish(const QString &server, const QString &key, const QString &account) {
@@ -270,7 +437,11 @@ public:
             if (platform_ == "twitch") pollTwitch(); else fail(obs_module_text("Account.Expired"));
         });
         resize(480, 170);
-        QTimer::singleShot(0, this, [this] { if (platform_ == "twitch") beginTwitch(); else beginKick(); });
+        QTimer::singleShot(0, this, [this] {
+            if (platform_ == "twitch") beginTwitch();
+            else if (platform_ == "youtube") beginYouTube();
+            else beginKick();
+        });
     }
 };
 }
@@ -280,3 +451,4 @@ void ConnectPlatformAccount(const QString &platform, QWidget *parent,
 {
     (new AccountDialog(platform.toLower(), parent, std::move(finished)))->open();
 }
+

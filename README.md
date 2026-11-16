@@ -1,20 +1,20 @@
 # Multistream OBS
 
-Um plugin para multistream no OBS, sem frufru. Transmita para a Twitch e a Kick enquanto a transmissão principal do OBS continua configurada para o YouTube. Cada destino do plugin tem controles e configurações próprios.
+Um plugin para multistream no OBS, sem frufru. Adicione destinos para YouTube, Twitch e Kick, cada um com controles e configurações próprios. Também é possível manter uma transmissão principal configurada no próprio OBS.
 
-> **Situação do projeto:** a transmissão para um servidor RTMP local foi testada. A conexão com contas reais da Twitch e da Kick e a estabilidade em transmissões longas ainda precisam ser verificadas.
+> **Situação do projeto:** a transmissão para um servidor RTMP local e a importação da chave de uma conta real da Twitch foram testadas. A conexão com uma conta real da Kick, uma transmissão real para a Kick e a estabilidade em transmissões longas ainda precisam ser verificadas.
 
 ## Recursos
 
-- Saídas independentes para Twitch e Kick, cada uma com botão de iniciar e parar.
+- Saídas independentes para YouTube, Twitch e Kick, cada uma com botão de iniciar e parar.
 - Configuração separada de codificador, resolução, taxa de bits, FPS, cena e faixa de áudio para cada destino.
 - Opções independentes para iniciar e parar junto com a transmissão principal do OBS.
-- Seleção de região da Twitch e conexão de conta para importar a chave de transmissão.
+- Seleção de região da Twitch e conexão de conta para importar dados de transmissão do YouTube, da Twitch e da Kick.
 - Lista de resoluções baseada nas opções do OBS, com possibilidade de digitar um valor personalizado.
-- Verificação automática de novas versões. Quando uma atualização é instalada, ela passa a funcionar ao reiniciar o OBS, sem interromper a transmissão atual.
+- No Windows, verificação automática de novas versões. Quando uma atualização é instalada, ela passa a funcionar ao reiniciar o OBS, sem interromper a transmissão atual.
 - Atalhos configuráveis no OBS e botões para iniciar ou parar todos os destinos.
 
-O plugin é destinado à transmissão. Ele não inclui chat nem login por conta.
+O plugin é destinado à transmissão e não inclui chat. A conexão de conta importa a chave de transmissão; se a chave mudar, conecte a conta novamente.
 
 ## Requisitos
 
@@ -45,11 +45,13 @@ O arquivo é uma extensão local para o OBS Flatpak, não uma instalação publi
 
 ## Configuração
 
-1. Configure o YouTube normalmente em **Configurações → Transmissão** do OBS.
-2. No painel Multistream, clique em **Adicionar novo destino → Twitch**. Selecione a região do servidor e cole a chave, ou use **Conectar conta e importar chave**. A tela de autorização da Twitch pode identificar o aplicativo como YT-Chatterino, cujo ID público é utilizado para essa conexão.
+1. Para transmitir ao YouTube pelo plugin, escolha **Adicionar novo destino → YouTube** e informe a chave, ou use **Conectar conta e importar chave**. A conexão pede um arquivo JSON OAuth de aplicativo para computador do Google, como o usado pelo YT-Chatterino, e acesso somente de leitura ao YouTube. Se houver mais de uma transmissão elegível, escolha a chave desejada. A YouTube Data API deve estar ativada no projeto Google; projetos em modo de teste precisam incluir sua conta como usuário de teste. Crie uma transmissão no YouTube Studio primeiro se não houver uma disponível.
+2. Para a Twitch, escolha **Adicionar novo destino → Twitch**. Selecione a região do servidor e cole a chave, ou use **Conectar conta e importar chave**. A tela de autorização da Twitch pode identificar o aplicativo como YT-Chatterino, cujo ID público é utilizado para essa conexão.
 3. Adicione um destino **Kick** e informe a URL do servidor e a chave do painel da Kick, ou importe esses dados conectando a conta. Para conectar a Kick, é necessário ter seu próprio aplicativo de desenvolvedor da Kick, com a URL de redirecionamento `http://localhost:37367/callback`, e informar o ID e o segredo do aplicativo na janela de conexão. A Kick exige essas credenciais para o fluxo OAuth. O plugin não salva o segredo nem os tokens OAuth.
 4. Ajuste vídeo e áudio para cada destino. Por padrão, um novo destino usa x264 separado a 6.000 Kbps, CBR e quadros-chave a cada dois segundos, além de AAC separado a 160 Kbps. Escolha valores e codificadores adequados para seu computador e para cada plataforma.
-5. Use **Iniciar** e **Parar** em cada destino. Para acompanhar a transmissão principal, marque **Sincronizar início com o OBS** e/ou **Sincronizar parada com o OBS** nas configurações do destino. O início sincronizado ocorre após a transmissão principal iniciar com sucesso.
+5. Use **Iniciar** e **Parar** em cada destino. Para acompanhar uma transmissão principal configurada em **Configurações → Transmissão** do OBS, marque **Sincronizar início com o OBS** e/ou **Sincronizar parada com o OBS** nas configurações do destino. O início sincronizado ocorre após a transmissão principal iniciar com sucesso.
+
+Use uma chave de transmissão do YouTube por saída ativa. Não envie simultaneamente a mesma chave pelo OBS e pelo plugin.
 
 A opção de reutilizar o codificador do OBS compartilha as configurações e pode depender de a transmissão principal estar ativa. Use codificadores separados para controlar os destinos independentemente.
 
@@ -82,3 +84,4 @@ O fluxo de trabalho do GitHub compila e testa os pacotes Windows e Flatpak e pub
 Este projeto deriva de [obs-multi-rtmp, de SoraYuki e colaboradores](https://github.com/sorayuki/obs-multi-rtmp), e mantém sua licença [GNU GPL v2](LICENSE). As alterações incluem identidade e configuração separadas, atalhos para Twitch e Kick, sincronização após o início da transmissão principal, estrutura de plugin do OBS 33 e atualizações automáticas. O código original e os avisos de licença de terceiros são preservados.
 
 O pacote do Windows também inclui o backend Schannel do Qt 6.11.1, distribuído com sua licença em `licenses/qt6/LICENSE.GPL2`. O código-fonte correspondente está disponível no [repositório oficial do Qt](https://code.qt.io/cgit/qt/qtbase.git/tag/?h=v6.11.1) e na [distribuição de fontes do Qt 6.11.1](https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/).
+

@@ -165,6 +165,9 @@ public:
         QObject::connect(addMenu->addAction("Twitch"), &QAction::triggered, [addTarget]() {
             addTarget("Twitch", "rtmps://ingest.global-contribute.live-video.net/app");
         });
+        QObject::connect(addMenu->addAction("YouTube"), &QAction::triggered, [addTarget]() {
+            addTarget("YouTube", "rtmps://a.rtmps.youtube.com:443/live2");
+        });
         QObject::connect(addMenu->addAction("Kick"), &QAction::triggered, [addTarget]() {
             addTarget("Kick", "");
         });
@@ -676,3 +679,4 @@ const char *obs_module_description(void)
 {
     return "Multiple RTMP Output Plugin";
 }
+

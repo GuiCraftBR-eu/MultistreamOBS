@@ -34,3 +34,27 @@ QStringList ObsResolutionOptions(uint32_t width, uint32_t height)
     }
     return result;
 }
+
+bool YouTubeStreamFromApi(const QJsonObject &item, YouTubeStreamSettings *out)
+{
+    if (!out) return false;
+    const auto cdn = item.value("cdn").toObject();
+    const auto ingestion = cdn.value("ingestionInfo").toObject();
+    const auto server = ingestion.value("rtmpsIngestionAddress").toString().trimmed();
+    const auto key = ingestion.value("streamName").toString().trimmed();
+    const QUrl url(server);
+    const auto host = url.host().toLower();
+    if (cdn.value("ingestionType").toString() != "rtmp" || key.isEmpty() ||
+        url.scheme() != "rtmps" || !host.endsWith(".youtube.com") || url.path().isEmpty() ||
+        !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment() || server.contains(key))
+        return false;
+    const auto snippet = item.value("snippet").toObject();
+    out->id = item.value("id").toString();
+    out->title = snippet.value("title").toString().trimmed();
+    if (out->title.isEmpty()) out->title = QStringLiteral("YouTube");
+    out->server = server;
+    out->key = key;
+    out->isDefault = snippet.value("isDefaultStream").toBool();
+    return true;
+}
+

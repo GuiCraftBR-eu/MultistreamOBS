@@ -237,6 +237,7 @@ class EditOutputWidgetImpl: public EditOutputWidget
     PropertiesWidget* serviceSettings_ = nullptr;
     QWidget* platformService_ = nullptr;
     QComboBox* twitchRegion_ = nullptr;
+    QComboBox* youtubeServer_ = nullptr;
     QLineEdit* kickServer_ = nullptr;
     QLineEdit* streamKey_ = nullptr;
     QNetworkAccessManager* serviceNetwork_ = nullptr;
@@ -492,6 +493,15 @@ protected:
                 if (index >= 0) twitchRegion_->setCurrentIndex(index);
                 ScheduleResizeToContent();
             });
+        } else if (platform_ == "youtube") {
+            youtubeServer_ = new QComboBox(page);
+            youtubeServer_->addItem(obs_module_text("YouTube.Primary"), "rtmps://a.rtmps.youtube.com:443/live2");
+            youtubeServer_->addItem(obs_module_text("YouTube.Backup"), "rtmps://b.rtmps.youtube.com:443/live2?backup=1");
+            if (!currentServer.isEmpty() && youtubeServer_->findData(currentServer) < 0)
+                youtubeServer_->addItem(obs_module_text("YouTube.CurrentServer"), currentServer);
+            const int current = youtubeServer_->findData(currentServer);
+            youtubeServer_->setCurrentIndex(current >= 0 ? current : 0);
+            form->addRow(obs_module_text("YouTube.Server"), youtubeServer_);
         } else {
             kickServer_ = new QLineEdit(NormalizeKickServer(currentServer), page);
             kickServer_->setPlaceholderText(obs_module_text("Kick.ServerHint"));
@@ -505,6 +515,14 @@ protected:
         connect(connectButton, &QPushButton::clicked, this, [this] {
             ConnectPlatformAccount(platform_, this, [this](QString server, QString key, QString account) {
                 if (kickServer_ && !server.isEmpty()) kickServer_->setText(NormalizeKickServer(server));
+                if (youtubeServer_ && !server.isEmpty()) {
+                    int index = youtubeServer_->findData(server);
+                    if (index < 0) {
+                        youtubeServer_->addItem(obs_module_text("YouTube.ImportedServer"), server);
+                        index = youtubeServer_->count() - 1;
+                    }
+                    youtubeServer_->setCurrentIndex(index);
+                }
                 streamKey_->setText(key);
                 QMessageBox::information(this, obs_module_text("Account.Title"),
                     QString::fromUtf8(obs_module_text("Account.Imported")).arg(account));
@@ -518,7 +536,7 @@ protected:
 
         // service
         {
-            if (platform_ == "twitch" || platform_ == "kick") {
+            if (platform_ == "twitch" || platform_ == "kick" || platform_ == "youtube") {
                 platformService_ = CreatePlatformService(tab);
                 tab->addTab(platformService_, obs_module_text("Tab.Service"));
             } else {
@@ -608,7 +626,7 @@ public:
         platform_ = QString::fromStdString(config_->platform).trimmed().toLower();
         if (platform_.isEmpty()) {
             const auto legacyName = QString::fromUtf8(config_->name).trimmed().toLower();
-            if (legacyName == "twitch" || legacyName == "kick") {
+            if (legacyName == "twitch" || legacyName == "kick" || legacyName == "youtube") {
                 platform_ = legacyName;
                 config_->platform = tostdu8(platform_);
             }
@@ -841,7 +859,7 @@ public:
     {
         auto protocol_cur = GetProtocolInfos()->GetList();
         while(protocol_cur->protocol) {
-            if ((platform_ != "twitch" && platform_ != "kick") || std::string_view(protocol_cur->protocol) == "RTMP")
+            if ((platform_ != "twitch" && platform_ != "kick" && platform_ != "youtube") || std::string_view(protocol_cur->protocol) == "RTMP")
                 protocolSelector_->addItem(protocol_cur->label, protocol_cur->protocol);
             ++protocol_cur;
         }
@@ -1097,7 +1115,8 @@ public:
         config_->outputParam = outputSettings_->Save();
         if (platformService_) {
             if (!config_->serviceParam.is_object()) config_->serviceParam = nlohmann::json::object();
-            const auto server = twitchRegion_ ? twitchRegion_->currentData().toString() : kickServer_->text().trimmed();
+            const auto server = twitchRegion_ ? twitchRegion_->currentData().toString() :
+                                youtubeServer_ ? youtubeServer_->currentData().toString() : kickServer_->text().trimmed();
             config_->serviceParam["server"] = tostdu8(platform_ == "kick" ? NormalizeKickServer(server) : server);
             config_->serviceParam["key"] = tostdu8(streamKey_->text().trimmed());
         } else {
@@ -1312,3 +1331,4 @@ public:
 EditOutputWidget* createEditOutputWidget(const std::string& targetid, QWidget* parent) {
     return new EditOutputWidgetImpl(targetid, parent);
 }
+

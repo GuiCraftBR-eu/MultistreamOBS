@@ -19,6 +19,11 @@ int main(int argc, char **argv) {
     check(NormalizeKickServer(root + "/special") == root + "/special", "preserve explicit path");
     check(NormalizeKickServer(root + "?token=x") == root + "?token=x", "preserve query URL");
     check(NormalizeKickServer("rtmps://other.example") == "rtmps://other.example", "preserve other host");
+    const auto options = ObsResolutionOptions(1920, 1080);
+    check(options == QStringList({"1920x1080", "1536x864", "1440x810", "1280x720", "1152x648",
+                                  "1096x616", "960x540", "852x480", "768x432", "698x392", "640x360"}),
+          "OBS resolution list for a 1920x1080 canvas");
+    check(ObsResolutionOptions(0, 0).isEmpty(), "no zero-sized resolution");
     if (!failures) std::cout << "All platform helper tests passed.\n";
     return failures ? 1 : 0;
 }

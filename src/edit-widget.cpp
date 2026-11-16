@@ -694,16 +694,7 @@ public:
                         v_resolution_->addItem("");
                         obs_video_info videoInfo{};
                         if (obs_get_video_info(&videoInfo)) {
-                            // The same scale factors and alignment as OBS's output resolution picker.
-                            const double scales[] = {1.0, 1.25, 1.0 / 0.75, 1.5, 1.0 / 0.6, 1.75,
-                                                     2.0, 2.25, 2.5, 2.75, 3.0};
-                            for (double scale : scales) {
-                                uint32_t w = uint32_t(double(videoInfo.base_width) / scale) & ~uint32_t(3);
-                                uint32_t h = uint32_t(double(videoInfo.base_height) / scale) & ~uint32_t(1);
-                                const auto text = QString::number(w) + "x" + QString::number(h);
-                                if (w && h && v_resolution_->findText(text) < 0)
-                                    v_resolution_->addItem(text);
-                            }
+                            v_resolution_->addItems(ObsResolutionOptions(videoInfo.output_width, videoInfo.output_height));
                         }
                     }
                     ++currow;

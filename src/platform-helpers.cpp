@@ -20,3 +20,17 @@ QString NormalizeKickServer(const QString &server)
     if (url.port() == -1) url.setPort(443);
     return url.toString(QUrl::FullyEncoded);
 }
+
+QStringList ObsResolutionOptions(uint32_t width, uint32_t height)
+{
+    const double scales[] = {1.0, 1.25, 1.0 / 0.75, 1.5, 1.0 / 0.6, 1.75,
+                             2.0, 2.25, 2.5, 2.75, 3.0};
+    QStringList result;
+    for (double scale : scales) {
+        const auto w = uint32_t(double(width) / scale) & ~uint32_t(1);
+        const auto h = uint32_t(double(height) / scale) & ~uint32_t(1);
+        const auto value = QString::number(w) + "x" + QString::number(h);
+        if (w && h && !result.contains(value)) result.append(value);
+    }
+    return result;
+}

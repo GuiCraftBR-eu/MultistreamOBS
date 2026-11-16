@@ -2,7 +2,7 @@
 
 Um plugin para multistream no OBS, sem frufru. Adicione destinos para YouTube, Twitch e Kick, cada um com controles e configurações próprios. Também é possível manter uma transmissão principal configurada no próprio OBS.
 
-> **Situação do projeto:** a transmissão para um servidor RTMP local e a importação da chave de uma conta real da Twitch foram testadas. A conexão com uma conta real da Kick, uma transmissão real para a Kick e a estabilidade em transmissões longas ainda precisam ser verificadas.
+> **Situação do projeto:** a transmissão para um servidor RTMP local e a importação de chaves de contas reais do YouTube e da Twitch foram testadas. A conexão com uma conta real da Kick, uma transmissão real para a Kick e a estabilidade em transmissões longas ainda precisam ser verificadas.
 
 ## Recursos
 

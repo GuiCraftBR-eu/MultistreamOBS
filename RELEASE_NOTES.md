@@ -7,5 +7,5 @@
 - Lista editável de resoluções calculadas como no OBS.
 - Correção para URLs de ingestão da Kick sem `/app` e para o intervalo automático de quadros-chave em destinos Kick existentes.
 
-A importação da chave da Twitch foi testada com uma conta real. As correções e a conexão de conta da Kick ainda dependem de validação com uma conta e uma transmissão reais. Tokens OAuth e o segredo do aplicativo Kick não são salvos pelo plugin; a chave importada é salva na configuração do perfil do OBS.
+A importação de chaves do YouTube e da Twitch foi testada com contas reais. As correções e a conexão de conta da Kick ainda dependem de validação com uma conta e uma transmissão reais. Tokens OAuth e o segredo do aplicativo Kick não são salvos pelo plugin; a chave importada é salva na configuração do perfil do OBS.
 

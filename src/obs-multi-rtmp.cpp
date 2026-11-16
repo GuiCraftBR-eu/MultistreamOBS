@@ -137,6 +137,7 @@ public:
             auto target = std::make_shared<OutputTargetConfig>();
             target->id = newId;
             target->name = name;
+            target->platform = name;
             target->serviceParam = {{"server", server}, {"key", ""}};
             global.targets.emplace_back(target);
             auto video = std::make_shared<VideoEncoderConfig>();

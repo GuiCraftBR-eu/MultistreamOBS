@@ -1,0 +1,101 @@
+name: Build and release
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        shell: pwsh
+        run: cmake --preset windows-x64 -DMULTISTREAM_BUILD_TESTS=ON
+      - name: Build
+        shell: pwsh
+        run: cmake --build --preset windows-x64 --parallel 4
+      - name: Test
+        shell: pwsh
+        run: |
+          $env:PATH = "$PWD\.deps\obs-deps-qt6-2026-10-23-x64\bin;$env:PATH"
+          ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = (Get-Content buildspec.json -Raw | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version' }
+          cmake --install build_x64 --config RelWithDebInfo --prefix "$PWD\dist\stage"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item README.md, LICENSE 'dist\stage\multistream-obs'
+          Remove-Item 'dist\stage\multistream-obs\multistream-obs.pdb' -Force -ErrorAction SilentlyContinue
+          python tools/package_update.py 'dist\stage\multistream-obs' $version 'dist\multistream-obs-update-win64.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path 'dist\stage\multistream-obs' -DestinationPath "dist\MultistreamOBS-$version-Windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: |
+            dist/MultistreamOBS-*-Windows-x64.zip
+            dist/multistream-obs-update-win64.json
+          if-no-files-found: error
+
+  flatpak:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test OBS Flatpak extension
+        uses: flatpak/flatpak-github-actions/flatpak-builder@401fe28a8384095fc1531b9d320b292f0ee45adb
+        with:
+          manifest-path: flatpak/com.obsproject.Studio.Plugin.MultistreamOBS.yml
+          bundle: MultistreamOBS-flatpak-x86_64.flatpak
+          branch: stable
+          build-bundle: true
+          upload-artifact: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-package
+          path: MultistreamOBS-flatpak-x86_64.flatpak
+          if-no-files-found: error
+
+  release:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [windows, flatpak]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-package
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: flatpak-package
+          path: dist
+      - name: Publish release if version is new
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(jq -r .version buildspec.json)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          if gh release view "v$version" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release v$version already exists; leaving it unchanged."
+            exit 0
+          fi
+          (cd dist && sha256sum MultistreamOBS-*-Windows-x64.zip multistream-obs-update-win64.json MultistreamOBS-flatpak-x86_64.flatpak > SHA256SUMS.txt)
+          gh release create "v$version" --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}" \
+            --title "Multistream OBS v$version" --notes-file RELEASE_NOTES.md \
+            dist/MultistreamOBS-*-Windows-x64.zip dist/multistream-obs-update-win64.json \
+            dist/MultistreamOBS-flatpak-x86_64.flatpak dist/SHA256SUMS.txt

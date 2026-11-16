@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="addon">
+  <id>com.obsproject.Studio.Plugin.MultistreamOBS</id>
+  <extends>com.obsproject.Studio</extends>
+  <name>Multistream OBS</name>
+  <summary>Independent Twitch and Kick streaming outputs</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <url type="homepage">https://github.com/GuiCraftBR-eu/MultistreamOBS</url>
+  <description><p>Send independent streaming outputs to Twitch and Kick while OBS streams to another platform.</p></description>
+  <releases><release version="1.2.0" date="2026-11-16"/></releases>
+</component>

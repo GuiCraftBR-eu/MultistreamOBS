@@ -1,7 +1,9 @@
-Primeira versão pública do Multistream OBS para Windows e OBS Studio 33.
+## Multistream OBS 1.2.0
 
-- Saídas independentes para Twitch e Kick, com configuração própria de vídeo e áudio.
-- Opções para sincronizar o início e a parada com a transmissão principal do OBS.
-- Atualizações verificadas automaticamente; a nova versão entra em uso ao reiniciar o OBS.
+- Extensão Flatpak para OBS Studio 33 em Linux x86-64.
+- Escolha da região de ingestão da Twitch, com lista local e atualização pela lista oficial.
+- Conexão de conta para importar os dados de transmissão da Twitch e da Kick. A Kick exige as credenciais de um aplicativo de desenvolvedor próprio.
+- Lista editável de resoluções calculadas como no OBS.
+- Correção para URLs de ingestão da Kick sem `/app` e para o intervalo automático de quadros-chave em destinos Kick existentes.
 
-Os testes de transmissão foram realizados em um servidor RTMP local. Uma transmissão real na Twitch e na Kick ainda não foi verificada. Consulte o README para instalação, configuração e limitações.
+As correções da Kick e o processo de autorização ainda dependem de validação com contas reais. Tokens OAuth e o segredo do aplicativo Kick não são salvos pelo plugin; a chave importada é salva na configuração do perfil do OBS.

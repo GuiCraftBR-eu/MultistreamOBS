@@ -11,6 +11,7 @@
 #include "push-widget.h"
 #include "edit-widget.h"
 #include "output-config.h"
+#include "platform-helpers.h"
 #include "protocols.h"
 
 #include "obs.hpp"
@@ -291,6 +292,15 @@ class PushWidgetImpl : public PushWidget, public IOBSOutputEventHanlder
         // Auto-release: obs_service_create keeps its own reference and every
         // early return below would otherwise leak this one.
         OBSDataAutoRelease conf = obs_data_create_from_json(config_->serviceParam.dump().c_str());
+        if (conf && IsKickTarget(QString::fromStdString(config_->platform), QString::fromUtf8(config_->name))) {
+            const auto original = QString::fromUtf8(obs_data_get_string(conf, "server"));
+            const auto normalized = NormalizeKickServer(original);
+            if (normalized != original) {
+                const auto bytes = normalized.toUtf8();
+                obs_data_set_string(conf, "server", bytes.constData());
+                blog(LOG_INFO, TAG "Completed the Kick server path for this output.");
+            }
+        }
 
         auto protocolInfo = GetProtocolInfos()->GetInfo(config_->protocol.c_str());
         assert(protocolInfo);
@@ -429,6 +439,9 @@ class PushWidgetImpl : public PushWidget, public IOBSOutputEventHanlder
                 auto videoConfig = FindById(global.videoConfig, config_id);
                 if (videoConfig) {
                     OBSDataAutoRelease settings = obs_data_create_from_json(videoConfig->encoderParams.dump().c_str());
+                    if (settings && IsKickTarget(QString::fromStdString(config_->platform), QString::fromUtf8(config_->name)) &&
+                        obs_data_get_int(settings, "keyint_sec") == 0)
+                        obs_data_set_int(settings, "keyint_sec", 2);
                     enc = obs_video_encoder_create(videoConfig->encoderId.c_str(), VideoEncoderName().c_str(), settings, nullptr);
                     if (enc) {
                         auto wh = ParseResolution(videoConfig->resolution);

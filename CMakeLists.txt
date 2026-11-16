@@ -60,6 +60,10 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   ./src/update-package.cpp
   ./src/update-manager.h
   ./src/update-manager.cpp
+  ./src/platform-helpers.h
+  ./src/platform-helpers.cpp
+  ./src/account-connect.h
+  ./src/account-connect.cpp
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
@@ -83,4 +87,8 @@ if(MULTISTREAM_BUILD_TESTS)
   target_include_directories(multistream-update-tests PRIVATE src)
   target_link_libraries(multistream-update-tests PRIVATE Qt6::Core)
   add_test(NAME update-package COMMAND multistream-update-tests)
+  add_executable(multistream-platform-tests tests/platform-helpers-test.cpp src/platform-helpers.cpp)
+  target_include_directories(multistream-platform-tests PRIVATE src)
+  target_link_libraries(multistream-platform-tests PRIVATE Qt6::Core)
+  add_test(NAME platform-helpers COMMAND multistream-platform-tests)
 endif()

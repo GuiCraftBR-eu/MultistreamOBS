@@ -7,12 +7,22 @@
 #include <qevent.h>
 #include <QComboBox>
 #include <QSignalBlocker>
+#include <QFormLayout>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QUrl>
 
 #include <regex>
 
 #include "obs-properties-widget.h"
 #include "helpers.h"
 #include "protocols.h"
+#include "platform-helpers.h"
+#include "account-connect.h"
 
 static std::optional<int> ParseStringToInt(const QString& str) {
     try {
@@ -224,7 +234,13 @@ class EditOutputWidgetImpl: public EditOutputWidget
         }
     };
 
-    PropertiesWidget* serviceSettings_;
+    PropertiesWidget* serviceSettings_ = nullptr;
+    QWidget* platformService_ = nullptr;
+    QComboBox* twitchRegion_ = nullptr;
+    QLineEdit* kickServer_ = nullptr;
+    QLineEdit* streamKey_ = nullptr;
+    QNetworkAccessManager* serviceNetwork_ = nullptr;
+    QString platform_;
     PropertiesWidget* outputSettings_;
     std::string supported_video_encoders_;
     std::string supported_audio_encoders_;
@@ -234,7 +250,7 @@ class EditOutputWidgetImpl: public EditOutputWidget
     QComboBox* protocolSelector_ = 0;
     QComboBox* venc_ = 0;
     QComboBox* v_scene_ = 0;
-    QLineEdit* v_resolution_ = 0;
+    QComboBox* v_resolution_ = 0;
     QComboBox* v_fpsdenumerator_ = 0;
     QLabel* v_share_notify_ = 0;
 
@@ -416,14 +432,100 @@ protected:
         ScheduleResizeToContent();
     }
 
+    QWidget* CreatePlatformService(QWidget* parent) {
+        auto page = new QWidget(parent);
+        auto form = new QFormLayout(page);
+        auto currentServer = QString::fromStdString(GetJsonField<std::string>(config_->serviceParam, "server").value_or(""));
+        const auto currentKey = QString::fromStdString(GetJsonField<std::string>(config_->serviceParam, "key").value_or(""));
+        if (platform_ == "twitch") {
+            twitchRegion_ = new QComboBox(page);
+            twitchRegion_->addItem(obs_module_text("Twitch.Automatic"), "rtmps://ingest.global-contribute.live-video.net/app");
+            // Snapshot of Twitch's public ingest list; refreshed from Twitch when online.
+            const std::pair<const char*, const char*> regions[] = {
+                {"South America (Sao Paulo)", "sae10"}, {"US East (N. Virginia)", "use10"},
+                {"US East (Ohio)", "use20"}, {"Europe (Ireland)", "euw10"},
+                {"Europe (Paris)", "euw30"}, {"Europe (Frankfurt)", "euc10"},
+                {"US West (Oregon)", "usw20"}, {"Europe (Stockholm)", "eun10"},
+                {"Asia Pacific (Sydney)", "aps20"}, {"Asia Pacific (Mumbai)", "aps30"},
+                {"Asia Pacific (Singapore)", "aps10"}, {"Asia Pacific (Seoul)", "apn20"},
+                {"Asia Pacific (Tokyo)", "apn10"}
+            };
+            for (const auto &region : regions)
+                twitchRegion_->addItem(region.first, QString("rtmps://%1.contribute.live-video.net/app").arg(region.second));
+            if (!currentServer.isEmpty() && twitchRegion_->findData(currentServer) < 0)
+                twitchRegion_->addItem(obs_module_text("Twitch.CurrentServer"), currentServer);
+            const int current = twitchRegion_->findData(currentServer);
+            twitchRegion_->setCurrentIndex(current >= 0 ? current : 0);
+            form->addRow(obs_module_text("Twitch.Server"), twitchRegion_);
+            serviceNetwork_ = new QNetworkAccessManager(this);
+            QNetworkRequest req{QUrl("https://ingest.twitch.tv/ingests")};
+            req.setRawHeader("User-Agent", "MultistreamOBS/1.2");
+            req.setTransferTimeout(15000);
+            req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+            auto reply = serviceNetwork_->get(req);
+            connect(reply, &QNetworkReply::downloadProgress, reply, [reply](qint64 received, qint64 total) {
+                if (received > 1024 * 1024 || total > 1024 * 1024) reply->abort();
+            });
+            connect(reply, &QNetworkReply::finished, this, [this, reply] {
+                const auto error = reply->error();
+                const auto data = reply->readAll();
+                reply->deleteLater();
+                if (error != QNetworkReply::NoError || data.size() > 1024 * 1024 || !twitchRegion_) return;
+                const auto list = QJsonDocument::fromJson(data).object().value("ingests").toArray();
+                const auto selected = twitchRegion_->currentData().toString();
+                QSignalBlocker blocker(twitchRegion_);
+                for (const auto &item : list) {
+                    const auto entry = item.toObject();
+                    auto server = entry.value("url_template_secure").toString();
+                    if (!server.endsWith("/{stream_key}")) continue;
+                    server.chop(QStringLiteral("/{stream_key}").size());
+                    const QUrl url(server);
+                    const auto name = entry.value("name").toString().trimmed();
+                    if (name.isEmpty() || url.scheme() != "rtmps" || url.host().isEmpty() ||
+                        !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment() ||
+                        !url.host().endsWith(".contribute.live-video.net")) continue;
+                    const int known = twitchRegion_->findData(server);
+                    if (known > 0) twitchRegion_->setItemText(known, name);
+                    else if (known < 0) twitchRegion_->addItem(name, server);
+                }
+                const int index = twitchRegion_->findData(selected);
+                if (index >= 0) twitchRegion_->setCurrentIndex(index);
+                ScheduleResizeToContent();
+            });
+        } else {
+            kickServer_ = new QLineEdit(NormalizeKickServer(currentServer), page);
+            kickServer_->setPlaceholderText(obs_module_text("Kick.ServerHint"));
+            form->addRow(obs_module_text("Kick.Server"), kickServer_);
+        }
+        streamKey_ = new QLineEdit(currentKey, page);
+        streamKey_->setEchoMode(QLineEdit::Password);
+        form->addRow(obs_module_text("Account.StreamKey"), streamKey_);
+        auto connectButton = new QPushButton(obs_module_text("Account.Connect"), page);
+        form->addRow(QString(), connectButton);
+        connect(connectButton, &QPushButton::clicked, this, [this] {
+            ConnectPlatformAccount(platform_, this, [this](QString server, QString key, QString account) {
+                if (kickServer_ && !server.isEmpty()) kickServer_->setText(NormalizeKickServer(server));
+                streamKey_->setText(key);
+                QMessageBox::information(this, obs_module_text("Account.Title"),
+                    QString::fromUtf8(obs_module_text("Account.Imported")).arg(account));
+            });
+        });
+        return page;
+    }
+
     QTabWidget* CreateOutputSettingsWidget(QWidget* parent) {
         auto tab = outputSettingsTabs_ = new ContentSizeTabWidget(parent);
 
         // service
         {
-            serviceSettings_ = new PropertiesWidget([this]() { ScheduleResizeToContent(); }, tab);
-            updateServiceTab();
-            tab->addTab(serviceSettings_, obs_module_text("Tab.Service"));
+            if (platform_ == "twitch" || platform_ == "kick") {
+                platformService_ = CreatePlatformService(tab);
+                tab->addTab(platformService_, obs_module_text("Tab.Service"));
+            } else {
+                serviceSettings_ = new PropertiesWidget([this]() { ScheduleResizeToContent(); }, tab);
+                updateServiceTab();
+                tab->addTab(serviceSettings_, obs_module_text("Tab.Service"));
+            }
         }
 
         // output
@@ -444,6 +546,7 @@ protected:
 
     void updateServiceTab()
     {
+        if (!serviceSettings_) return;
         auto protocol_info = GetProtocolInfos()->GetInfo(config_->protocol.c_str());
         assert(protocol_info);
         if (!protocol_info) {
@@ -502,6 +605,14 @@ public:
             return;
         }
         config_ = std::make_shared<OutputTargetConfig>(*config_);
+        platform_ = QString::fromStdString(config_->platform).trimmed().toLower();
+        if (platform_.isEmpty()) {
+            const auto legacyName = QString::fromUtf8(config_->name).trimmed().toLower();
+            if (legacyName == "twitch" || legacyName == "kick") {
+                platform_ = legacyName;
+                config_->platform = tostdu8(platform_);
+            }
+        }
 
         setWindowTitle(obs_module_text("StreamingSettings"));
 
@@ -576,8 +687,24 @@ public:
                     {
                         int curcol = 0;
                         encLayout->addWidget(new QLabel(obs_module_text("VideoResolution"), gp), currow, curcol++);
-                        encLayout->addWidget(v_resolution_ = new QLineEdit("", gp), currow, curcol++);
-                        v_resolution_->setPlaceholderText(obs_module_text("SameAsOBSNow"));
+                        encLayout->addWidget(v_resolution_ = new QComboBox(gp), currow, curcol++);
+                        v_resolution_->setEditable(true);
+                        v_resolution_->setInsertPolicy(QComboBox::NoInsert);
+                        v_resolution_->lineEdit()->setPlaceholderText(obs_module_text("SameAsOBSNow"));
+                        v_resolution_->addItem("");
+                        obs_video_info videoInfo{};
+                        if (obs_get_video_info(&videoInfo)) {
+                            // The same scale factors and alignment as OBS's output resolution picker.
+                            const double scales[] = {1.0, 1.25, 1.0 / 0.75, 1.5, 1.0 / 0.6, 1.75,
+                                                     2.0, 2.25, 2.5, 2.75, 3.0};
+                            for (double scale : scales) {
+                                uint32_t w = uint32_t(double(videoInfo.base_width) / scale) & ~uint32_t(3);
+                                uint32_t h = uint32_t(double(videoInfo.base_height) / scale) & ~uint32_t(1);
+                                const auto text = QString::number(w) + "x" + QString::number(h);
+                                if (w && h && v_resolution_->findText(text) < 0)
+                                    v_resolution_->addItem(text);
+                            }
+                        }
                     }
                     ++currow;
                     {
@@ -723,7 +850,8 @@ public:
     {
         auto protocol_cur = GetProtocolInfos()->GetList();
         while(protocol_cur->protocol) {
-            protocolSelector_->addItem(protocol_cur->label, protocol_cur->protocol);
+            if ((platform_ != "twitch" && platform_ != "kick") || std::string_view(protocol_cur->protocol) == "RTMP")
+                protocolSelector_->addItem(protocol_cur->label, protocol_cur->protocol);
             ++protocol_cur;
         }
     }
@@ -929,7 +1057,7 @@ public:
         else
             it->outputScene.reset();
         
-        auto resolution = v_resolution_->text().toUtf8();
+        auto resolution = v_resolution_->currentText().trimmed().toUtf8();
         if (!resolution.isEmpty())
             it->resolution = resolution.constData();
         else
@@ -976,7 +1104,14 @@ public:
         config_->syncStart = syncStart_->isChecked();
         config_->syncStop = syncStop_->isChecked();
         config_->outputParam = outputSettings_->Save();
-        config_->serviceParam = serviceSettings_->Save();
+        if (platformService_) {
+            if (!config_->serviceParam.is_object()) config_->serviceParam = nlohmann::json::object();
+            const auto server = twitchRegion_ ? twitchRegion_->currentData().toString() : kickServer_->text().trimmed();
+            config_->serviceParam["server"] = tostdu8(platform_ == "kick" ? NormalizeKickServer(server) : server);
+            config_->serviceParam["key"] = tostdu8(streamKey_->text().trimmed());
+        } else {
+            config_->serviceParam = serviceSettings_->Save();
+        }
 
         if (venc_->currentData().isValid()) {
             std::string encoderId = venc_->currentData().toString().toStdString();
@@ -1058,7 +1193,7 @@ public:
             v_scene_->setCurrentIndex(0);
         }
 
-        v_resolution_->setText(QString::fromUtf8(
+        v_resolution_->setEditText(QString::fromUtf8(
             config.resolution.value_or("")
         ));
 

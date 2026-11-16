@@ -9,6 +9,8 @@ Um plugin para multistream no OBS, sem frufru. Transmita para a Twitch e a Kick 
 - Saídas independentes para Twitch e Kick, cada uma com botão de iniciar e parar.
 - Configuração separada de codificador, resolução, taxa de bits, FPS, cena e faixa de áudio para cada destino.
 - Opções independentes para iniciar e parar junto com a transmissão principal do OBS.
+- Seleção de região da Twitch e conexão de conta para importar a chave de transmissão.
+- Lista de resoluções baseada nas opções do OBS, com possibilidade de digitar um valor personalizado.
 - Verificação automática de novas versões. Quando uma atualização é instalada, ela passa a funcionar ao reiniciar o OBS, sem interromper a transmissão atual.
 - Atalhos configuráveis no OBS e botões para iniciar ou parar todos os destinos.
 
@@ -16,7 +18,7 @@ O plugin é destinado à transmissão. Ele não inclui chat nem login por conta.
 
 ## Requisitos
 
-- Windows 10 ou 11 de 64 bits.
+- Windows 10 ou 11 de 64 bits, ou OBS Studio instalado pelo Flatpak em Linux x86-64.
 - OBS Studio **33.0.1**. Outras versões não foram testadas.
 - Conexão de upload suficiente para a soma das taxas de todas as transmissões, com margem para variações.
 
@@ -31,17 +33,29 @@ Codificadores independentes exigem mais recursos do processador ou da GPU. O lim
 
 Para o OBS portátil, extraia a mesma pasta `multistream-obs` para a pasta `plugins` que fica na raiz da instalação portátil. Não misture a estrutura nova com pastas antigas `bin/64bit`.
 
+### Flatpak (Linux x86-64)
+
+Com o OBS Studio da Flathub instalado, baixe `MultistreamOBS-flatpak-x86_64.flatpak` na página de versões, feche o OBS e instale o arquivo:
+
+```bash
+flatpak install --user ./MultistreamOBS-flatpak-x86_64.flatpak
+```
+
+O arquivo é uma extensão local para o OBS Flatpak, não uma instalação publicada na Flathub. Para atualizar essa instalação, baixe e instale o novo arquivo `.flatpak` da versão desejada. A atualização automática descrita abaixo se aplica ao Windows.
+
 ## Configuração
 
 1. Configure o YouTube normalmente em **Configurações → Transmissão** do OBS.
-2. No painel Multistream, clique em **Adicionar novo destino → Twitch**. Cole a chave de transmissão no campo correspondente. O servidor RTMPS da Twitch já vem preenchido, mas pode ser alterado.
-3. Adicione um destino **Kick** e copie a URL do servidor e a chave da página de configurações de transmissão do painel da Kick. Use a URL mostrada na sua conta.
+2. No painel Multistream, clique em **Adicionar novo destino → Twitch**. Selecione a região do servidor e cole a chave, ou use **Conectar conta e importar chave**. A tela de autorização da Twitch pode identificar o aplicativo como YT-Chatterino, cujo ID público é utilizado para essa conexão.
+3. Adicione um destino **Kick** e informe a URL do servidor e a chave do painel da Kick, ou importe esses dados conectando a conta. Para conectar a Kick, é necessário ter seu próprio aplicativo de desenvolvedor da Kick, com a URL de redirecionamento `http://localhost:37367/callback`, e informar o ID e o segredo do aplicativo na janela de conexão. A Kick exige essas credenciais para o fluxo OAuth. O plugin não salva o segredo nem os tokens OAuth.
 4. Ajuste vídeo e áudio para cada destino. Por padrão, um novo destino usa x264 separado a 6.000 Kbps, CBR e quadros-chave a cada dois segundos, além de AAC separado a 160 Kbps. Escolha valores e codificadores adequados para seu computador e para cada plataforma.
 5. Use **Iniciar** e **Parar** em cada destino. Para acompanhar a transmissão principal, marque **Sincronizar início com o OBS** e/ou **Sincronizar parada com o OBS** nas configurações do destino. O início sincronizado ocorre após a transmissão principal iniciar com sucesso.
 
 A opção de reutilizar o codificador do OBS compartilha as configurações e pode depender de a transmissão principal estar ativa. Use codificadores separados para controlar os destinos independentemente.
 
 **Proteja suas chaves:** elas aparecem mascaradas na interface, mas são gravadas em texto simples na configuração do perfil do OBS. Arquivos exportados pelo plugin também contêm essas chaves; não os compartilhe.
+
+Para destinos Kick existentes chamados “Kick”, o plugin completa automaticamente o caminho `/app` quando recebe apenas o endereço RTMPS de ingestão da Kick e usa intervalo de quadro-chave de dois segundos se estiver configurado como automático. URLs com outros caminhos não são alteradas.
 
 ## Atualizações automáticas
 
@@ -61,7 +75,7 @@ ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure
 cmake --install build_x64 --config RelWithDebInfo --prefix "$PWD\dist\stage"
 ```
 
-O fluxo de trabalho do GitHub compila, executa os testes e publica uma versão quando `buildspec.json` contém um número de versão estável que ainda não existe. O arquivo `RELEASE_NOTES.md` fornece as notas da versão; revise-o antes de alterar a versão.
+O fluxo de trabalho do GitHub compila e testa os pacotes Windows e Flatpak e publica uma versão quando `buildspec.json` contém um número de versão estável que ainda não existe. O arquivo `RELEASE_NOTES.md` fornece as notas da versão; revise-o antes de alterar a versão.
 
 ## Créditos e licença
 

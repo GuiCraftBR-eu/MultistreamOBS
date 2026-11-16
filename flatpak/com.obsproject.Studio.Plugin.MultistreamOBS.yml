@@ -1,0 +1,35 @@
+id: com.obsproject.Studio.Plugin.MultistreamOBS
+branch: stable
+runtime: com.obsproject.Studio
+runtime-version: stable
+sdk: org.freedesktop.Sdk//26.08
+build-extension: true
+separate-locales: false
+build-options:
+  prefix: /app/plugins/MultistreamOBS
+modules:
+  - name: multistream-obs
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DENABLE_FRONTEND_API=ON
+      - -DENABLE_QT=ON
+      - -DMULTISTREAM_BUILD_TESTS=ON
+    run-tests: true
+    post-install:
+      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - .deps
+          - .git
+          - .flatpak-builder
+          - build_x64
+          - build_x86_64
+          - release
+          - dist
+      - type: file
+        path: com.obsproject.Studio.Plugin.MultistreamOBS.metainfo.xml

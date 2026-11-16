@@ -60,6 +60,21 @@ jobs:
           branch: stable
           build-bundle: true
           upload-artifact: false
+      - name: Verify extension in the OBS Flatpak runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          flatpak install --user -y flathub com.obsproject.Studio
+          flatpak install --user -y ./MultistreamOBS-flatpak-x86_64.flatpak
+          flatpak run --command=sh com.obsproject.Studio -c '
+            set -eu
+            plugin=/app/plugins/lib/obs-modules/plugins/multistream-obs.so
+            test -f "$plugin"
+            test -f /app/plugins/share/obs/obs-modules/plugins/multistream-obs/locale/en-US.ini
+            dependencies=$(ldd "$plugin")
+            echo "$dependencies"
+            ! echo "$dependencies" | grep -q "not found"
+          '
       - uses: actions/upload-artifact@v4
         with:
           name: flatpak-package

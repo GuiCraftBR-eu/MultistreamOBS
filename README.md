@@ -2,7 +2,7 @@
 
 Um plugin para multistream no OBS, sem frufru. Adicione destinos para YouTube, Twitch e Kick, cada um com controles e configurações próprios. Também é possível manter uma transmissão principal configurada no próprio OBS.
 
-> **Situação do projeto:** a transmissão para um servidor RTMP local e a importação de chaves de contas reais do YouTube e da Twitch foram testadas. A conexão com uma conta real da Kick, uma transmissão real para a Kick e a estabilidade em transmissões longas ainda precisam ser verificadas.
+> **Situação do projeto:** a transmissão para um servidor RTMP local, a importação de chaves de contas reais do YouTube, Twitch e Kick e uma transmissão curta para a Kick foram testadas. A estabilidade em transmissões longas ainda precisa ser verificada.
 
 ## Recursos
 
@@ -47,13 +47,15 @@ O arquivo é uma extensão local para o OBS Flatpak, não uma instalação publi
 
 1. Para transmitir ao YouTube pelo plugin, escolha **Adicionar novo destino → YouTube** e informe a chave, ou use **Conectar conta e importar chave**. A conexão pede um arquivo JSON OAuth de aplicativo para computador do Google, como o usado pelo YT-Chatterino, e acesso somente de leitura ao YouTube. Se houver mais de uma transmissão elegível, escolha a chave desejada. A YouTube Data API deve estar ativada no projeto Google; projetos em modo de teste precisam incluir sua conta como usuário de teste. Crie uma transmissão no YouTube Studio primeiro se não houver uma disponível.
 2. Para a Twitch, escolha **Adicionar novo destino → Twitch**. Selecione a região do servidor e cole a chave, ou use **Conectar conta e importar chave**. A tela de autorização da Twitch pode identificar o aplicativo como YT-Chatterino, cujo ID público é utilizado para essa conexão.
-3. Adicione um destino **Kick** e informe a URL do servidor e a chave do painel da Kick, ou importe esses dados conectando a conta. Para conectar a Kick, é necessário ter seu próprio aplicativo de desenvolvedor da Kick, com a URL de redirecionamento `http://localhost:37367/callback`, e informar o ID e o segredo do aplicativo na janela de conexão. A Kick exige essas credenciais para o fluxo OAuth. O plugin não salva o segredo nem os tokens OAuth.
+3. Adicione um destino **Kick** e informe a URL do servidor e a chave do painel da Kick, ou importe esses dados conectando a conta. Para conectar a Kick, é necessário ter seu próprio aplicativo de desenvolvedor e informar seu ID, segredo e URL de redirecionamento. A URL precisa ser exatamente a mesma cadastrada na Kick; o valor sugerido é `http://localhost:37365/callback`, usado para conexão com a Kick no YT-Chatterino. A porta deve estar livre durante a conexão. A Kick exige essas credenciais para o fluxo OAuth. O plugin não salva o segredo nem os tokens OAuth.
 4. Ajuste vídeo e áudio para cada destino. Por padrão, um novo destino usa x264 separado a 6.000 Kbps, CBR e quadros-chave a cada dois segundos, além de AAC separado a 160 Kbps. Escolha valores e codificadores adequados para seu computador e para cada plataforma.
 5. Use **Iniciar** e **Parar** em cada destino. Para acompanhar uma transmissão principal configurada em **Configurações → Transmissão** do OBS, marque **Sincronizar início com o OBS** e/ou **Sincronizar parada com o OBS** nas configurações do destino. O início sincronizado ocorre após a transmissão principal iniciar com sucesso.
 
 Use uma chave de transmissão do YouTube por saída ativa. Não envie simultaneamente a mesma chave pelo OBS e pelo plugin.
 
 A opção de reutilizar o codificador do OBS compartilha as configurações e pode depender de a transmissão principal estar ativa. Use codificadores separados para controlar os destinos independentemente.
+
+A Kick recebe apenas o mixer de áudio principal selecionado no destino, usado tanto ao vivo quanto no VOD. Uma faixa de VOD separada não é enviada para a Kick; a opção continua disponível para a Twitch.
 
 **Proteja suas chaves:** elas aparecem mascaradas na interface, mas são gravadas em texto simples na configuração do perfil do OBS. Arquivos exportados pelo plugin também contêm essas chaves; não os compartilhe.
 

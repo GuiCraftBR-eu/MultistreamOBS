@@ -5,6 +5,9 @@
 #include <QJsonObject>
 #include <cstdint>
 
+class QTcpServer;
+enum class KickCallbackResult { Listening, InvalidUrl, PortUnavailable };
+KickCallbackResult OpenKickCallback(QTcpServer *server, const QString &redirect);
 bool IsKickTarget(const QString &platform, const QString &name);
 QString NormalizeKickServer(const QString &server);
 QStringList ObsResolutionOptions(uint32_t width, uint32_t height);

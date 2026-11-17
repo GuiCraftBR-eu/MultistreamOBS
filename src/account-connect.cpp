@@ -19,6 +19,7 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -34,7 +35,6 @@
 
 namespace {
 constexpr auto twitchClientId = "vbyiljlhljby8n1uwpjkpo4h5a6iiq";
-constexpr auto kickRedirect = "http://localhost:37367/callback";
 
 QByteArray randomBytes(int count) {
     QByteArray bytes(count, 0);
@@ -175,13 +175,26 @@ class AccountDialog final : public QDialog {
         clientSecret_ = QInputDialog::getText(this, obs_module_text("Account.KickTitle"),
                                               obs_module_text("Account.KickClientSecret"), QLineEdit::Password, {}, &ok);
         if (!ok || clientSecret_.isEmpty()) { reject(); return; }
-        if (!callback_.listen(QHostAddress::LocalHost, 37367)) { fail(obs_module_text("Account.CallbackError")); return; }
+        QString redirect = QStringLiteral("http://localhost:37365/callback");
+        for (;;) {
+            redirect = QInputDialog::getText(this, obs_module_text("Account.KickTitle"),
+                                             obs_module_text("Account.KickRedirect"),
+                                             QLineEdit::Normal, redirect, &ok).trimmed();
+            if (!ok || redirect.isEmpty()) { reject(); return; }
+            const auto result = OpenKickCallback(&callback_, redirect);
+            if (result == KickCallbackResult::Listening) break;
+            const auto text = result == KickCallbackResult::InvalidUrl
+                                  ? QString::fromUtf8(obs_module_text("Account.InvalidKickRedirect"))
+                                  : QString::fromUtf8(obs_module_text("Account.CallbackError")).arg(QUrl(redirect).port());
+            QMessageBox::warning(this, obs_module_text("Account.KickTitle"), text);
+        }
+        redirect_ = redirect;
         verifier_ = urlSafe(randomBytes(64));
         state_ = urlSafe(randomBytes(32));
         const auto challenge = urlSafe(QCryptographicHash::hash(verifier_.toUtf8(), QCryptographicHash::Sha256));
         QUrl url("https://id.kick.com/oauth/authorize");
         QUrlQuery query;
-        query.addQueryItem("client_id", clientId_); query.addQueryItem("redirect_uri", kickRedirect);
+        query.addQueryItem("client_id", clientId_); query.addQueryItem("redirect_uri", redirect_);
         query.addQueryItem("response_type", "code"); query.addQueryItem("scope", "channel:read streamkey:read");
         query.addQueryItem("state", state_); query.addQueryItem("code_challenge", challenge);
         query.addQueryItem("code_challenge_method", "S256"); url.setQuery(query);
@@ -247,7 +260,7 @@ class AccountDialog final : public QDialog {
                 const QUrlQuery query(target);
                 const auto code = query.queryItemValue("code");
                 const auto err = query.queryItemValue("error");
-                const auto expectedPath = platform_ == "youtube" ? QStringLiteral("/") : QStringLiteral("/callback");
+                const auto expectedPath = QUrl(redirect_).path();
                 const bool valid = !callbackUsed_ && socket->peerAddress().isLoopback() && first.value(0) == "GET" &&
                     target.path() == expectedPath && !state_.isEmpty() && query.queryItemValue("state") == state_ &&
                     (!code.isEmpty() || !err.isEmpty());
@@ -262,7 +275,7 @@ class AccountDialog final : public QDialog {
                 QUrlQuery form;
                 form.addQueryItem("grant_type", "authorization_code"); form.addQueryItem("client_id", clientId_);
                 if (!clientSecret_.isEmpty()) form.addQueryItem("client_secret", clientSecret_);
-                form.addQueryItem("redirect_uri", platform_ == "youtube" ? redirect_ : QString::fromLatin1(kickRedirect));
+                form.addQueryItem("redirect_uri", redirect_);
                 form.addQueryItem("code_verifier", verifier_); form.addQueryItem("code", code);
                 clientSecret_.clear(); verifier_.clear(); state_.clear();
                 const QUrl tokenUrl(platform_ == "youtube" ? "https://oauth2.googleapis.com/token" : "https://id.kick.com/oauth/token");

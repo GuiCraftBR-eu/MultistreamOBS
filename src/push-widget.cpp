@@ -526,11 +526,16 @@ class PushWidgetImpl : public PushWidget, public IOBSOutputEventHanlder
         OBSEncoder aenc = GetAudioEncoder();
 
         std::vector<std::tuple<int, OBSEncoder>> additionalTracks;
+        const bool kickOutput = IsKickTarget(QString::fromStdString(config_->platform), QString::fromUtf8(config_->name));
         if (auto audioConfigId = config_->audioConfig) {
             auto audioConfig = FindById(global.audioConfig, *audioConfigId);
 
             if (!audioConfig) {
                 blog(LOG_ERROR, TAG "Load audio encoder config failed for %s. Could not determine additional tracks.", config_->name.c_str());
+            } else if (kickOutput && !audioConfig->audioTracks.empty()) {
+                // Kick receives the primary audio mix; the extra Twitch VOD track
+                // uses enhanced RTMP audio, which may cause other ingest servers to close the connection.
+                blog(LOG_INFO, TAG "Using one audio track for the Kick output.");
             } else {
                 additionalTracks.reserve(audioConfig->audioTracks.size());
                 for (auto& track : audioConfig->audioTracks) {

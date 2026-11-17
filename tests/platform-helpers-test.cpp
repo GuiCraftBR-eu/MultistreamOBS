@@ -1,5 +1,7 @@
 #include "platform-helpers.h"
 #include <QCoreApplication>
+#include <QHostAddress>
+#include <QTcpServer>
 #include <iostream>
 
 int main(int argc, char **argv) {
@@ -8,6 +10,21 @@ int main(int argc, char **argv) {
     auto check = [&](bool good, const char *name) {
         if (!good) { std::cerr << "FAIL: " << name << '\n'; ++failures; }
     };
+    QTcpServer callback, occupied;
+    check(OpenKickCallback(&callback, "https://localhost:37365/callback") == KickCallbackResult::InvalidUrl,
+          "reject non-HTTP Kick callback");
+    check(OpenKickCallback(&callback, "http://evil.example:37365/callback") == KickCallbackResult::InvalidUrl,
+          "reject non-local Kick callback");
+    check(OpenKickCallback(&callback, "http://localhost:37365/callback?token=x") == KickCallbackResult::InvalidUrl,
+          "reject Kick callback containing a query");
+    check(occupied.listen(QHostAddress::LocalHost, 0), "reserve a local test port");
+    const auto redirect = QString("http://localhost:%1/callback").arg(occupied.serverPort());
+    check(OpenKickCallback(&callback, redirect) == KickCallbackResult::PortUnavailable,
+          "report an occupied Kick callback port");
+    occupied.close();
+    check(OpenKickCallback(&callback, redirect) == KickCallbackResult::Listening,
+          "open the registered Kick callback after the port is free");
+    callback.close();
     const QString root = "rtmps://example.global-contribute.live-video.net";
     check(IsKickTarget("kick", "Other"), "explicit Kick platform");
     check(IsKickTarget("", "Kick"), "legacy Kick target");

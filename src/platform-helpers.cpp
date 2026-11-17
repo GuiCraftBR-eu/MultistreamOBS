@@ -1,5 +1,19 @@
 #include "platform-helpers.h"
+#include <QHostAddress>
+#include <QTcpServer>
 #include <QUrl>
+
+KickCallbackResult OpenKickCallback(QTcpServer *server, const QString &redirect)
+{
+    const QUrl url(redirect, QUrl::StrictMode);
+    if (!server || !url.isValid() || url.scheme() != "http" ||
+        url.host().compare(QStringLiteral("localhost"), Qt::CaseInsensitive) != 0 ||
+        url.port() < 1 || url.port() > 65535 || !url.path().startsWith('/') ||
+        !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment())
+        return KickCallbackResult::InvalidUrl;
+    return server->listen(QHostAddress::LocalHost, quint16(url.port()))
+               ? KickCallbackResult::Listening : KickCallbackResult::PortUnavailable;
+}
 
 bool IsKickTarget(const QString &platform, const QString &name)
 {

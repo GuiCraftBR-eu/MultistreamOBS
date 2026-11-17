@@ -775,8 +775,15 @@ public:
 
                         for(int i = 1; i <= NUM_MIXER_TRACKS; ++i)
                             a_vod_track_->addItem(QString(std::to_string(i).c_str()), i - 1);
+                        if (platform_ == "kick")
+                            a_vod_track_->setToolTip(obs_module_text("Kick.SingleAudioInfo"));
                     }
                     ++currow;
+                    if (platform_ == "kick") {
+                        auto note = new QLabel(obs_module_text("Kick.SingleAudioInfo"), gp);
+                        note->setWordWrap(true);
+                        encLayout->addWidget(note, currow++, 0, 1, 2);
+                    }
                     {
                         encLayout->addWidget(audioEncoderSettings_ = new PropertiesWidget([this]() { ScheduleResizeToContent(); }, gp), currow, 0, 1, 2);
                     }
@@ -1007,7 +1014,7 @@ public:
         else
         {
             a_mixer_->setEnabled(true);
-            a_vod_track_->setEnabled(true);
+            a_vod_track_->setEnabled(platform_ != "kick");
         }
 
         auto sharedAudioTargets = GetEncoderShareTargets(true);

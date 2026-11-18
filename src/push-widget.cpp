@@ -921,6 +921,11 @@ public:
         return output_ != nullptr && obs_output_active(output_);
     }
 
+    bool IsBusy() override
+    {
+        return isStarting_ || IsRunning();
+    }
+
     bool GetEnabled() override { return config_->enabled; }
 
     void SetEnabled(bool enabled) override

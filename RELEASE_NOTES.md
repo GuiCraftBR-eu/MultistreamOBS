@@ -1,6 +1,8 @@
-## Multistream OBS 1.2.1
+## Multistream OBS 1.2.2
 
-- Corrige o conflito da porta de autenticação da Kick com o YT-Chatterino. A conexão permite informar a URL de retorno cadastrada no aplicativo de desenvolvedor da Kick.
-- Evita reconexões na Kick causadas pelo envio de uma faixa de áudio de VOD adicional. A Kick usa o mixer principal selecionado para a transmissão e o VOD; a faixa de VOD separada continua disponível para a Twitch.
+- Recupera destinos do backup do perfil quando o arquivo principal de configurações está danificado.
+- Preserva os arquivos e desativa o salvamento automático quando nem as configurações nem o backup podem ser lidos. O painel mostra um aviso e permite restaurar uma exportação válida.
+- Rejeita arquivos de importação inválidos ou incompatíveis, informa falhas de gravação e mantém os destinos atuais se a importação não puder ser salva. A importação também é bloqueada enquanto um destino está conectando.
+- Salva exportações e configurações de forma atômica, com verificações para evitar arquivos incompletos e proteger o backup válido.
 
-A conexão da conta e uma transmissão curta para a Kick foram testadas com uma conta real. Transmissões longas ainda não foram verificadas.
+As configurações e exportações ainda contêm chaves de transmissão em texto simples. Mantenha esses arquivos privados.

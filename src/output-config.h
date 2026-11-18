@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <memory>
 #include <list>
+#include <functional>
 
 #include <json.hpp>
 
@@ -76,7 +77,9 @@ inline T FindById(std::list<T>& list, const S& id) {
 
 MultiOutputConfig& GlobalMultiOutputConfig();
 
-void SaveMultiOutputConfig();
+enum class ConfigStatus { Ready, Recovered, ReadError, WriteError };
+void SetConfigStatusCallback(std::function<void(ConfigStatus)> callback);
+bool SaveMultiOutputConfig(MultiOutputConfig *replacement = nullptr, bool allowReplacement = false);
 
 bool LoadMultiOutputConfig();
 
@@ -88,7 +91,5 @@ std::string GenerateId(MultiOutputConfig& config);
 // profile's obs-multi-rtmp.json.
 std::string SerializeMultiOutputConfig(MultiOutputConfig& config);
 
-// Returns std::nullopt only if `content` isn't valid JSON; a validly
-// parsed but unexpectedly-shaped file yields an (possibly empty) config
-// instead of failing, same tolerance as the profile loader.
+// Reject malformed or unrelated JSON instead of silently clearing destinations.
 std::optional<MultiOutputConfig> DeserializeMultiOutputConfig(const std::string& content);

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <util/platform.h>
 #include "json-util.hpp"
+#include "config-store.h"
 
 
 MultiOutputConfig& GlobalMultiOutputConfig()
@@ -190,7 +191,7 @@ static AudioEncoderConfigPtr LoadAudioConfig(nlohmann::json& json) {
     return config;
 }
 
-static MultiOutputConfig LoadMultiOutputConfig(const std::string& content) {
+static std::optional<MultiOutputConfig> ParseMultiOutputConfig(const std::string& content) {
     try {
         int target_count = 0, videocfg_count = 0, audiocfg_count = 0;
 
@@ -239,8 +240,9 @@ static MultiOutputConfig LoadMultiOutputConfig(const std::string& content) {
         return config;
     }
     catch(const std::exception& e) {
-        blog(LOG_ERROR, TAG "Fail to parse config json: %s", e.what());
-        return {};
+        (void)e; // Parser details may contain private configuration data.
+        blog(LOG_ERROR, TAG "Failed to parse configuration.");
+        return std::nullopt;
     }
 }
 
@@ -249,46 +251,94 @@ std::string SerializeMultiOutputConfig(MultiOutputConfig& config) {
 }
 
 std::optional<MultiOutputConfig> DeserializeMultiOutputConfig(const std::string& content) {
-    try {
-        auto parsed = nlohmann::json::parse(content);
-        (void)parsed;
-    } catch (const std::exception&) {
+    if (content.size() > static_cast<size_t>(MaxConfigBytes) ||
+        !IsValidMultistreamConfig(QByteArray(content.data(), static_cast<qsizetype>(content.size()))))
         return std::nullopt;
-    }
-    return LoadMultiOutputConfig(content);
+    return ParseMultiOutputConfig(content);
 }
 
-void SaveMultiOutputConfig() {
-    auto profiledir = obs_frontend_get_current_profile_path();
-    if (profiledir) {
-        std::string filename = profiledir;
-        filename += "/multistream-obs.json";
-        auto content = SaveMultiOutputConfig(GlobalMultiOutputConfig());
-        os_quick_write_utf8_file_safe(filename.c_str(), content.c_str(), content.size(), true, "tmp", "bak");
-        blog(LOG_INFO, TAG "Save config into %s", filename.c_str());
-    }
-    bfree(profiledir);
+namespace {
+std::unique_ptr<ConfigStore> configStore;
+QString configPath;
+bool parseFailed = false;
+bool recoveryRequired = false;
+std::function<void(ConfigStatus)> statusCallback;
+
+QString CurrentConfigPath() {
+    auto dir = obs_frontend_get_current_profile_path();
+    if (!dir)
+        return {};
+    const QString path = QString::fromUtf8(dir) + "/multistream-obs.json";
+    bfree(dir);
+    return path;
 }
 
+void ReportStatus(ConfigStatus status) {
+    if (statusCallback)
+        statusCallback(status);
+}
+}
+
+void SetConfigStatusCallback(std::function<void(ConfigStatus)> callback) {
+    statusCallback = std::move(callback);
+}
+
+bool SaveMultiOutputConfig(MultiOutputConfig *replacement, bool allowReplacement) {
+    if (!configStore || configPath.isEmpty() || CurrentConfigPath() != configPath ||
+        ((parseFailed || recoveryRequired) && !allowReplacement)) {
+        blog(LOG_ERROR, TAG "Configuration save blocked to protect existing files.");
+        ReportStatus(ConfigStatus::ReadError);
+        return false;
+    }
+    auto &config = replacement ? *replacement : GlobalMultiOutputConfig();
+    const auto content = SaveMultiOutputConfig(config);
+    if (!configStore->Save(QByteArray(content.data(), static_cast<qsizetype>(content.size())), allowReplacement)) {
+        blog(LOG_ERROR, TAG "Failed to save configuration; existing files were preserved.");
+        ReportStatus(recoveryRequired ? ConfigStatus::ReadError : ConfigStatus::WriteError);
+        return false;
+    }
+    parseFailed = false;
+    recoveryRequired = false;
+    ReportStatus(ConfigStatus::Ready);
+    return true;
+}
 
 bool LoadMultiOutputConfig() {
-    auto profiledir = obs_frontend_get_current_profile_path();
-    bool ret = false;
-    if (profiledir) {
-        std::string filename = profiledir;
-        filename += "/multistream-obs.json";
-        auto content = os_quick_read_utf8_file(filename.c_str());
-        if (content) {
-            GlobalMultiOutputConfig() = LoadMultiOutputConfig(content);
-            bfree(content);
-            ret = true;
-            blog(LOG_INFO, TAG "Load config from %s", filename.c_str());
-        } else {
-            blog(LOG_INFO, TAG "Load config from %s failed", filename.c_str());
-        }
+    configPath = CurrentConfigPath();
+    parseFailed = false;
+    recoveryRequired = false;
+    if (configPath.isEmpty()) {
+        configStore.reset();
+        ReportStatus(ConfigStatus::ReadError);
+        return false;
     }
-    bfree(profiledir);
-    return ret;
+    configStore = std::make_unique<ConfigStore>(configPath);
+    const auto result = configStore->Load();
+    if (result.state == ConfigLoadState::NewProfile) {
+        ReportStatus(ConfigStatus::Ready);
+        return false;
+    }
+    if (result.state == ConfigLoadState::Invalid) {
+        recoveryRequired = true;
+        blog(LOG_ERROR, TAG "Configuration and backup are unreadable; automatic saving is disabled.");
+        ReportStatus(ConfigStatus::ReadError);
+        return false;
+    }
+    const auto parsed = DeserializeMultiOutputConfig(std::string(result.content.constData(), static_cast<size_t>(result.content.size())));
+    if (!parsed) {
+        parseFailed = true;
+        recoveryRequired = true;
+        ReportStatus(ConfigStatus::ReadError);
+        return false;
+    }
+    GlobalMultiOutputConfig() = *parsed;
+    if (result.state == ConfigLoadState::Recovered) {
+        blog(LOG_WARNING, TAG "Recovered configuration from backup.");
+        ReportStatus(ConfigStatus::Recovered);
+    } else {
+        ReportStatus(ConfigStatus::Ready);
+    }
+    return true;
 }
 
 

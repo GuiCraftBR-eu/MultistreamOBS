@@ -50,6 +50,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   ./src/json-util.hpp
   ./src/output-config.h
   ./src/output-config.cpp
+  ./src/config-store.h
+  ./src/config-store.cpp
   ./src/obs-properties-widget.h
   ./src/obs-properties-widget.cpp
   ./src/protocols.h
@@ -91,4 +93,8 @@ if(MULTISTREAM_BUILD_TESTS)
   target_include_directories(multistream-platform-tests PRIVATE src)
   target_link_libraries(multistream-platform-tests PRIVATE Qt6::Core Qt6::Network)
   add_test(NAME platform-helpers COMMAND multistream-platform-tests)
+  add_executable(multistream-config-tests tests/config-store-test.cpp src/config-store.cpp)
+  target_include_directories(multistream-config-tests PRIVATE src dep/nlohmann-json)
+  target_link_libraries(multistream-config-tests PRIVATE Qt6::Core)
+  add_test(NAME config-store COMMAND multistream-config-tests)
 endif()

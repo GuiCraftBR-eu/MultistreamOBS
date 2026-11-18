@@ -13,6 +13,7 @@ Um plugin para multistream no OBS, sem frufru. Adicione destinos para YouTube, T
 - Lista de resoluções baseada nas opções do OBS, com possibilidade de digitar um valor personalizado.
 - No Windows, verificação automática de novas versões. Quando uma atualização é instalada, ela passa a funcionar ao reiniciar o OBS, sem interromper a transmissão atual.
 - Atalhos configuráveis no OBS e botões para iniciar ou parar todos os destinos.
+- Recuperação do backup de configurações, avisos de erro de gravação e validação de arquivos importados.
 
 O plugin é destinado à transmissão e não inclui chat. A conexão de conta importa a chave de transmissão; se a chave mudar, conecte a conta novamente.
 
@@ -58,6 +59,8 @@ A opção de reutilizar o codificador do OBS compartilha as configurações e po
 A Kick recebe apenas o mixer de áudio principal selecionado no destino, usado tanto ao vivo quanto no VOD. Uma faixa de VOD separada não é enviada para a Kick; a opção continua disponível para a Twitch.
 
 **Proteja suas chaves:** elas aparecem mascaradas na interface, mas são gravadas em texto simples na configuração do perfil do OBS. Arquivos exportados pelo plugin também contêm essas chaves; não os compartilhe.
+
+Se o arquivo de configurações do perfil estiver danificado, o plugin tenta recuperar o backup e mostra um aviso. Se os dois arquivos estiverem ilegíveis, o salvamento automático é desativado para protegê-los; restaure uma exportação válida pelo botão **Importar configuração**. Confira os destinos após uma recuperação. A importação substitui os destinos atuais e só é permitida quando todos estiverem parados.
 
 Para destinos Kick existentes chamados “Kick”, o plugin completa automaticamente o caminho `/app` quando recebe apenas o endereço RTMPS de ingestão da Kick e usa intervalo de quadro-chave de dois segundos se estiver configurado como automático. URLs com outros caminhos não são alteradas.
 

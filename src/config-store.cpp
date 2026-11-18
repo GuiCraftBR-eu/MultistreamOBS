@@ -7,6 +7,47 @@
 #include <unordered_set>
 #include <utility>
 
+namespace {
+using Json = nlohmann::json;
+
+bool OptionalFieldsMatch(const Json &entry, std::initializer_list<const char *> fields, Json::value_t type)
+{
+    for (const auto *field : fields) {
+        const auto it = entry.find(field);
+        if (it != entry.end() && !it->is_null() && it->type() != type &&
+            !(type == Json::value_t::number_integer && it->is_number_integer()))
+            return false;
+    }
+    return true;
+}
+
+bool KnownFieldsMatch(const Json &entry, const char *field)
+{
+    if (std::string(field) == "targets") {
+        return OptionalFieldsMatch(entry, {"name", "platform", "protocol", "video-config", "audio-config"}, Json::value_t::string) &&
+               OptionalFieldsMatch(entry, {"sync-start", "sync-stop", "enabled"}, Json::value_t::boolean) &&
+               OptionalFieldsMatch(entry, {"service-param", "output-param"}, Json::value_t::object);
+    }
+    if (!OptionalFieldsMatch(entry, {"encoder"}, Json::value_t::string) ||
+        !OptionalFieldsMatch(entry, {"param"}, Json::value_t::object))
+        return false;
+    if (std::string(field) == "video_configs")
+        return OptionalFieldsMatch(entry, {"scene", "resolution"}, Json::value_t::string) &&
+               OptionalFieldsMatch(entry, {"fps-denumerator"}, Json::value_t::number_integer);
+    if (!OptionalFieldsMatch(entry, {"mixerId"}, Json::value_t::number_integer) ||
+        !OptionalFieldsMatch(entry, {"audioTracks"}, Json::value_t::array))
+        return false;
+    const auto tracks = entry.find("audioTracks");
+    if (tracks != entry.end() && tracks->is_array()) {
+        for (const auto &track : *tracks) {
+            if (!track.is_object() || !OptionalFieldsMatch(track, {"mixer_track", "output_track"}, Json::value_t::number_integer))
+                return false;
+        }
+    }
+    return true;
+}
+}
+
 bool IsValidMultistreamConfig(const QByteArray &content)
 {
     if (content.isEmpty() || content.size() > MaxConfigBytes)
@@ -23,7 +64,7 @@ bool IsValidMultistreamConfig(const QByteArray &content)
                 return false;
             std::unordered_set<std::string> ids;
             for (const auto &entry : *it) {
-                if (!entry.is_object())
+                if (!entry.is_object() || !KnownFieldsMatch(entry, field))
                     return false;
                 const auto id = entry.find("id");
                 if (id == entry.end() || !id->is_string())

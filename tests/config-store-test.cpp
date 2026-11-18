@@ -25,6 +25,9 @@ int main(int argc, char **argv)
     check(!IsValidMultistreamConfig(R"({"targets":[{}]})"), "reject target without ID");
     check(!IsValidMultistreamConfig(R"({"targets":[{"id":"x"},{"id":"x"}]})"), "reject duplicate target IDs");
     check(!IsValidMultistreamConfig(R"({"targets":[],"video_configs":{}})"), "reject invalid encoder list");
+    check(!IsValidMultistreamConfig(R"({"targets":[{"id":"x","service-param":"broken"}]})"), "reject damaged service settings");
+    check(!IsValidMultistreamConfig(R"({"targets":[{"id":"x","sync-start":"yes"}]})"), "reject damaged synchronization setting");
+    check(!IsValidMultistreamConfig(R"({"targets":[],"audio_configs":[{"id":"a","audioTracks":[1]}]})"), "reject damaged audio tracks");
     check(!IsValidMultistreamConfig(QByteArray(MaxConfigBytes + 1, 'x')), "reject oversized configuration");
 
     QTemporaryDir temp;
